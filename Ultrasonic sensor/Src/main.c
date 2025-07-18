@@ -1,0 +1,222 @@
+#include "stm32f4xx.h"
+
+// Pins
+
+#define TRIG1_PIN   8   // PB8
+
+#define ECHO1_PIN   9   // PB9
+
+//#define TRIG2_PIN   10  // PB10
+//
+//#define ECHO2_PIN   11  // PB11
+
+#define LED1_PIN    6   // PC6 - US1 detection
+
+#define LED2_PIN    13  // PB13 - US2 detection
+
+#define DETECTION_THRESHOLD 1749  // Adjust based on distance ~30 cm
+
+// ====== Function Prototypes ======
+
+void DWT_Init(void);
+
+void delay_us(uint32_t us);
+
+void SystemCoreClockUpdate(void);
+
+void GPIO_Setup_All(void);
+
+void TIM2_Init(void);
+
+void Trigger_Pulse(GPIO_TypeDef *GPIOx, uint8_t trig_pin);
+
+uint8_t Object_Detection(GPIO_TypeDef *GPIOx, uint8_t trig_pin, uint8_t echo_pin);
+
+void Control_LEDs(uint8_t us1, uint8_t us2);
+
+void Turn_Off_LEDs(void);
+
+// ====== Microsecond Delay (DWT-based) ======
+
+void DWT_Init(void) {
+
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+
+}
+
+void delay_us(uint32_t us) {
+
+    uint32_t cycles = (SystemCoreClock / 1000000L) * us;
+
+    uint32_t start = DWT->CYCCNT;
+
+    while ((DWT->CYCCNT - start) < cycles);
+
+}
+
+// ====== System Clock Setup ======
+
+uint32_t SystemCoreClock = 16000000;
+
+void SystemCoreClockUpdate(void) {
+
+    SystemCoreClock = 16000000;  // HSI
+
+}
+
+void SystemInit(void) {
+
+    // Use default HSI at 16 MHz
+
+}
+
+// ====== Timer Init for Ultrasonic Timing ======
+
+void TIM2_Init(void) {
+
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+
+    TIM2->PSC = 16 - 1;  // 1 us tick if 16 MHz
+
+    TIM2->ARR = 0xFFFF;
+
+    TIM2->CR1 |= TIM_CR1_CEN;
+
+}
+
+// ====== GPIO Setup ======
+
+void GPIO_Setup_All(void) {
+
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN | RCC_AHB1ENR_GPIOCEN;
+
+    // TRIG1, TRIG2 as output
+
+GPIOB->MODER &= ~((3 << (TRIG1_PIN * 2)) | (3 << (TRIG2_PIN * 2)));
+
+    GPIOB->MODER |= ((1 << (TRIG1_PIN * 2)) | (1 << (TRIG2_PIN * 2)));
+
+// ECHO1, ECHO2 as input
+
+GPIOB->MODER &= ~((3 << (ECHO1_PIN * 2)) | (3 << (ECHO2_PIN * 2)));
+
+    GPIOB->PUPDR &= ~((3 << (ECHO1_PIN * 2)) | (3 << (ECHO2_PIN * 2)));
+
+    GPIOB->PUPDR |= ((2 << (ECHO1_PIN * 2)) | (2 << (ECHO2_PIN * 2))); // Pull-down
+
+// LED1 (PC6), LED2 (PB13) as output
+
+GPIOC->MODER &= ~(3 << (LED1_PIN * 2));
+
+    GPIOC->MODER |= (1 << (LED1_PIN * 2));
+
+    GPIOB->MODER &= ~(3 << (LED2_PIN * 2));
+
+    GPIOB->MODER |= (1 << (LED2_PIN * 2));
+
+    Turn_Off_LEDs();
+
+}
+
+// ====== Trigger Pulse Function ======
+
+void Trigger_Pulse(GPIO_TypeDef *GPIOx, uint8_t trig_pin) {
+
+    GPIOx->BSRR = (1 << trig_pin);
+
+    delay_us(10);  // 10 µs trigger
+
+    GPIOx->BSRR = (1 << (trig_pin + 16));
+
+}
+
+// ====== Ultrasonic Measurement ======
+
+uint8_t Object_Detection(GPIO_TypeDef *GPIOx, uint8_t trig_pin, uint8_t echo_pin) {
+
+    uint32_t start = 0, end = 0, pulse;
+
+Trigger_Pulse(GPIOx, trig_pin);
+
+// Wait for ECHO to go HIGH
+
+    uint32_t timeout = DWT->CYCCNT;
+
+    while (!(GPIOB->IDR & (1 << echo_pin))) {
+
+        if ((DWT->CYCCNT - timeout) > (SystemCoreClock / 1000 * 25)) // 25ms
+
+            return 0;  // timeout
+
+    }
+
+start = TIM2->CNT;
+
+// Wait for ECHO to go LOW
+
+    timeout = DWT->CYCCNT;
+
+    while ((GPIOB->IDR & (1 << echo_pin))) {
+
+        if ((DWT->CYCCNT - timeout) > (SystemCoreClock / 1000 * 25))
+
+            return 0;  // timeout
+
+    }
+
+end = TIM2->CNT;
+
+    pulse = (end >= start) ? (end - start) : (0xFFFFFFFF - start + end);
+
+return (pulse < DETECTION_THRESHOLD);
+
+}
+
+// ====== LED Control ======
+
+void Turn_Off_LEDs(void) {
+
+    GPIOC->BSRR = (1 << (LED1_PIN + 16));  // PC6 off
+
+    GPIOB->BSRR = (1 << (LED2_PIN + 16));  // PB13 off
+
+}
+
+void Control_LEDs(uint8_t us1, uint8_t us2) {
+
+    Turn_Off_LEDs();
+
+    if (us1) GPIOC->BSRR = (1 << LED1_PIN);  // PC6 ON
+
+    if (us2) GPIOB->BSRR = (1 << LED2_PIN);  // PB13 ON
+
+}
+
+// ====== Main ======
+
+int main(void) {
+
+    SystemCoreClockUpdate();
+
+    DWT_Init();
+
+    GPIO_Setup_All();
+
+    TIM2_Init();
+
+while (1) {
+
+        uint8_t us1 = Object_Detection(GPIOB, TRIG1_PIN, ECHO1_PIN);
+
+        uint8_t us2 = Object_Detection(GPIOB, TRIG2_PIN, ECHO2_PIN);
+
+Control_LEDs(us1, us2);
+
+delay_us(100000); // 100 ms between checks
+
+    }
+
+}
+

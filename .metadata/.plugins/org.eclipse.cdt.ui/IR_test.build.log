@@ -1,0 +1,23 @@
+16:01:01 **** Build of configuration Debug for project IR_test ****
+make -j8 all 
+arm-none-eabi-gcc "../Core/Src/main.c" -mcpu=cortex-m4 -std=gnu11 -g3 -DDEBUG -DUSE_HAL_DRIVER -DSTM32F405xx -c -I../Core/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc -I../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I../Drivers/CMSIS/Include -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -MMD -MP -MF"Core/Src/main.d" -MT"Core/Src/main.o" --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o "Core/Src/main.o"
+../Core/Src/main.c: In function 'GPIO_Setup_All':
+../Core/Src/main.c:191:51: error: 'TRIG2_PIN' undeclared (first use in this function); did you mean 'TRIG1_PIN'?
+  191 | GPIOB->MODER &= ~((3 << (TRIG1_PIN * 2)) | (3 << (TRIG2_PIN * 2)));
+      |                                                   ^~~~~~~~~
+      |                                                   TRIG1_PIN
+../Core/Src/main.c:191:51: note: each undeclared identifier is reported only once for each function it appears in
+../Core/Src/main.c:197:51: error: 'ECHO2_PIN' undeclared (first use in this function); did you mean 'ECHO1_PIN'?
+  197 | GPIOB->MODER &= ~((3 << (ECHO1_PIN * 2)) | (3 << (ECHO2_PIN * 2)));
+      |                                                   ^~~~~~~~~
+      |                                                   ECHO1_PIN
+../Core/Src/main.c: In function 'main':
+../Core/Src/main.c:309:19: error: 'us2' undeclared (first use in this function); did you mean 'us1'?
+  309 | Control_LEDs(us1, us2);
+      |                   ^~~
+      |                   us1
+make: *** [Core/Src/subdir.mk:34: Core/Src/main.o] Error 1
+"make -j8 all" terminated with exit code 2. Build might be incomplete.
+
+16:01:02 Build Failed. 4 errors, 0 warnings. (took 1s.595ms)
+
